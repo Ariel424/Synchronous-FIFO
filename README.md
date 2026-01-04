@@ -7,6 +7,8 @@ Key Highlights:
 
 
 ● Modular Interface: Leveraged a SystemVerilog Interface to encapsulate signals, reducing wire clutter and providing a scalable foundation for a layered testbench.
+
+
 ● Reliability: Integrated overflow and underflow protection logic to ensure data integrity during simultaneous read/write operations.
 
 This workflow emphasizes my focus on creating reusable, synthesizable code paired with organized verification infrastructure.
