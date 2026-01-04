@@ -2,34 +2,39 @@ module FIFO (input Clock, Reset, Write, Read,
             input [7:0] Din, output reg [7:0] Dout,
             output Empty, Full);
   
-  reg [3:0] Write_Pointer = 0, Read_Pointer = 0; //
-  reg [4:0] Count = 0; // 
-  reg [7:0] Mem [15:0]; //
+  reg [4:0] Write_Pointer = 0, Read_Pointer = 0; // 5-bit pointers
+  reg [7:0] Mem [15:0];
  
-  always @(posedge clk)
+  always @(posedge Clock)
     begin
       if (Reset == 1'b1)
         begin
           Write_Pointer <= 0;
-          Read_Pointer <= 0;
-          Count  <= 0;
+          Read_Pointer  <= 0;
         end
-      else if (Write && !Full)
-        begin
-          Mem[Write_Pointer] <= Din;
-          Write_Pointer      <= Write_Pointer + 1;
-          Count       <= Count + 1;
-        end
-      else if (Read && !Empty)
-        begin
-          Dout <= Mem[Read_Pointer];
-          Read_Pointer <= Read_Pointer + 1;
-          Count  <= Count - 1;
-        end
+      else begin
+        case ({Write && !Full, Read && !Empty})
+          2'b10: begin // Write only
+            Mem[Write_Pointer[3:0]] <= Din;
+            Write_Pointer           <= Write_Pointer + 1;
+          end
+          2'b01: begin // Read only
+            Dout         <= Mem[Read_Pointer[3:0]];
+            Read_Pointer <= Read_Pointer + 1;
+          end
+          2'b11: begin // Simultaneous read and write
+            Mem[Write_Pointer[3:0]] <= Din;
+            Dout                    <= Mem[Read_Pointer[3:0]];
+            Write_Pointer           <= Write_Pointer + 1;
+            Read_Pointer            <= Read_Pointer + 1;
+          end
+        endcase
+      end
     end
  
-  Assign Empty = (Count == 0) ? 1'b1 : 1'b0;
-  Assign Full  = (Count == 16) ? 1'b1 : 1'b0;
+  assign Empty = (Write_Pointer == Read_Pointer);
+  assign Full  = (Write_Pointer[3:0] == Read_Pointer[3:0]) && 
+                 (Write_Pointer[4] != Read_Pointer[4]);
  
 endmodule
  
