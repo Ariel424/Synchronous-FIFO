@@ -7,28 +7,21 @@ module FIFO (input Clock, Reset, Write, Read,
  
   always @(posedge Clock)
     begin
-      if (Reset == 1'b1)
+      if (Reset)
         begin
           Write_Pointer <= 0;
           Read_Pointer  <= 0;
         end
       else begin
-        case ({Write && !Full, Read && !Empty})
-          2'b10: begin // Write only
-            Mem[Write_Pointer[3:0]] <= Din;
-            Write_Pointer           <= Write_Pointer + 1;
-          end
-          2'b01: begin // Read only
-            Dout         <= Mem[Read_Pointer[3:0]];
-            Read_Pointer <= Read_Pointer + 1;
-          end
-          2'b11: begin // Simultaneous read and write
-            Mem[Write_Pointer[3:0]] <= Din;
-            Dout                    <= Mem[Read_Pointer[3:0]];
-            Write_Pointer           <= Write_Pointer + 1;
-            Read_Pointer            <= Read_Pointer + 1;
-          end
-        endcase
+        if (Write && !Full) begin
+          Mem[Write_Pointer[3:0]] <= Din;
+          Write_Pointer           <= Write_Pointer + 1;
+        end
+        
+        if (Read && !Empty) begin
+          Dout         <= Mem[Read_Pointer[3:0]];
+          Read_Pointer <= Read_Pointer + 1;
+        end
       end
     end
  
