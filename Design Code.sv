@@ -32,15 +32,7 @@ endmodule
 
 interface FIFO_if;
 
-  logic Clock;
-  logic Reset;
-
-  logic Write;
-  logic Read;
-  logic [7:0] Data_in;
-
-  logic [7:0] Data_out;
-  logic Empty;
-  logic Full;
-
+  logic Clock, Reset, Write, Read, Empty, Full;
+  logic [7:0] Data_in, [7:0] Data_out;
+    
 endinterface
