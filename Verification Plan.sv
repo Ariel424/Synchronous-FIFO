@@ -105,7 +105,6 @@ class FIFO_scoreboard;
   int pass_count, fail_count;
 
   function new(mailbox #(FIFO_transaction) mon2scb);
-    this.vif = vif;
     this.mon2scb = mon2scb;
   endfunction
 
