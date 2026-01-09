@@ -146,6 +146,10 @@ class FIFO_scoreboard;
   endfunction
 endclass
 
+// ============================================================================
+// Coverage CLASS
+// ============================================================================
+
 class FIFO_coverage;
   virtual FIFO_if vif;
   mailbox #(FIFO_transaction) mon2cov;
