@@ -104,8 +104,7 @@ class FIFO_scoreboard;
   bit [7:0] ref_q[$];
   int pass_count, fail_count;
 
-  function new(virtual FIFO_if vif,
-               mailbox #(FIFO_transaction) mon2scb);
+  function new(mailbox #(FIFO_transaction) mon2scb);
     this.vif = vif;
     this.mon2scb = mon2scb;
   endfunction
