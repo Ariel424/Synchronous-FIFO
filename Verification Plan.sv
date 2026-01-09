@@ -7,14 +7,19 @@ class FIFO_transaction;
   rand bit Read;
   rand bit [7:0] Data_in;
   
+  // Output signals (captured by monitor, NOT randomized)
+  bit Full;
+  bit Empty;
+  bit [7:0] Data_out;
+  
   constraint write_read_dist {
     Write dist {0:=30, 1:=70};
     Read dist {0:=30, 1:=70};
   }
   
   function void display(string tag = "");
-    $display("[%0s] Time=%0t Write=%0b Read=%0b Din=%0h", 
-             tag, $time, Write, Read, Data_in);
+    $display("[%0s] Time=%0t Write=%0b Read=%0b Din=%0h Full=%0b Empty=%0b Dout=%0h", 
+             tag, $time, Write, Read, Data_in, Full, Empty, Data_out);
   endfunction
 endclass
 
@@ -88,9 +93,12 @@ class FIFO_monitor;
     forever begin
       FIFO_transaction trans = new();
       @(posedge vif.Clock);
-      trans.Write   = vif.Write;
-      trans.Read    = vif.Read;
-      trans.Data_in = vif.Data_in;
+      trans.Write    = vif.Write;
+      trans.Read     = vif.Read;
+      trans.Data_in  = vif.Data_in;
+      trans.Full     = vif.Full;
+      trans.Empty    = vif.Empty;
+      trans.Data_out = vif.Data_out;
       mon2scb.put(trans);
     end
   endtask
@@ -113,51 +121,90 @@ class FIFO_scoreboard;
       FIFO_transaction trans;
       mon2scb.get(trans);
 
-      if (trans.Write && !vif.Full)
+      if (trans.Write && !trans.Full)
         ref_q.push_back(trans.Data_in);
 
-      if (trans.Read && !vif.Empty) begin
+      if (trans.Read && !trans.Empty) begin
         bit [7:0] exp = ref_q.pop_front();
-        if (vif.Data_out === exp)
+        if (trans.Data_out === exp)
           pass_count++;
-        else
+        else begin
+          $display("MISMATCH: Expected=%0h Got=%0h at time=%0t", exp, trans.Data_out, $time);
           fail_count++;
+        end
       end
     end
   endtask
 
   function void report();
-    $display("PASS=%0d FAIL=%0d", pass_count, fail_count);
+    $display("========================================");
+    $display("SCOREBOARD REPORT");
+    $display("========================================");
+    $display("PASS = %0d", pass_count);
+    $display("FAIL = %0d", fail_count);
+    $display("========================================");
   endfunction
 endclass
 
-// ============================================================================
-// COVERAGE CLASS
-// ============================================================================
 class FIFO_coverage;
   virtual FIFO_if vif;
-
-  covergroup fifo_cg @(posedge vif.Clock);
-    coverpoint vif.Write;
-    coverpoint vif.Read;
-    coverpoint vif.Full;
-    coverpoint vif.Empty;
+  mailbox #(FIFO_transaction) mon2cov;
+  
+  // Interface-level coverage
+  covergroup interface_cg @(posedge vif.Clock);
+    cp_write: coverpoint vif.Write;
+    cp_read:  coverpoint vif.Read;
+    cp_full:  coverpoint vif.Full;
+    cp_empty: coverpoint vif.Empty;
+    
+    // Cross coverage for corner cases
+    cross_wr: cross cp_write, cp_read;
+    cross_status: cross cp_full, cp_empty;
+    cross_ops: cross cp_write, cp_read, cp_full, cp_empty;
   endgroup
-
-  function new(virtual FIFO_if vif);
+  
+  // Transaction-level coverage
+  covergroup transaction_cg;
+    cp_data: coverpoint trans.Data_in {
+      bins low    = {[0:63]};
+      bins mid    = {[64:191]};
+      bins high   = {[192:255]};
+    }
+    
+    cp_operation: coverpoint {trans.Write, trans.Read} {
+      bins idle       = {2'b00};
+      bins write_only = {2'b10};
+      bins read_only  = {2'b01};
+      bins both       = {2'b11};
+    }
+  endgroup
+  
+  FIFO_transaction trans;
+  
+  function new(virtual FIFO_if vif, mailbox #(FIFO_transaction) mon2cov);
     this.vif = vif;
-    fifo_cg = new();
+    this.mon2cov = mon2cov;
+    interface_cg = new();
+    transaction_cg = new();
   endfunction
-
+  
   task run();
-    forever @(posedge vif.Clock) fifo_cg.sample();
+    fork
+      // Interface sampling (automatic with event)
+      forever @(posedge vif.Clock) interface_cg.sample();
+      
+      // Transaction sampling
+      forever begin
+        mon2cov.get(trans);
+        transaction_cg.sample();
+      end
+    join
   endtask
-
-  function void report();
-    $display("Coverage = %0.2f%%", $get_coverage());
-  endfunction
 endclass
 
+// ============================================================================
+// ENVIRONMENT CLASS
+// ============================================================================
 class FIFO_environment;
   FIFO_generator gen;
   FIFO_driver drv;
@@ -175,7 +222,7 @@ class FIFO_environment;
     gen = new(gen2drv, drv_done);
     drv = new(vif, gen2drv, drv_done);
     mon = new(vif, mon2scb);
-    scb = new(vif, mon2scb);
+    scb = new(mon2scb);
     cov = new(vif);
   endfunction
 
