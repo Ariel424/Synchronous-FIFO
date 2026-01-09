@@ -100,7 +100,6 @@ endclass
 // SCOREBOARD CLASS
 // ============================================================================
 class FIFO_scoreboard;
-  virtual FIFO_if vif;
   mailbox #(FIFO_transaction) mon2scb;
   bit [7:0] ref_q[$];
   int pass_count, fail_count;
