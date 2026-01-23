@@ -1,7 +1,7 @@
 // ============================================================================
 // TRANSACTION CLASS
 // ============================================================================
-class FIFO_transaction;
+class S_FIFO_transaction;
   // Input signals
   rand bit Write, Read;
   rand bit [7:0] Data_in;
@@ -24,12 +24,12 @@ endclass
 // ============================================================================
 // GENERATOR CLASS
 // ============================================================================
-class FIFO_generator;
-  mailbox #(FIFO_transaction) gen2drv;
+class S_FIFO_generator;
+  mailbox #(S_FIFO_transaction) gen2drv;
   event drv_done;
   int num_transactions = 100;
 
-  function new(mailbox #(FIFO_transaction) gen2drv, event drv_done, int num_transactions = 100);
+  function new(mailbox #(S_FIFO_transaction) gen2drv, event drv_done, int num_transactions = 100);
     this.gen2drv = gen2drv;
     this.drv_done = drv_done;
     this.num_transactions = num_transactions;
@@ -37,9 +37,9 @@ class FIFO_generator;
 
   task run();
     repeat(num_transactions) begin
-      FIFO_transaction trans = new();
+      S_FIFO_transaction = new();
       assert(trans.randomize());
-      gen2drv.put(trans);
+      gen2drv.put(transaction);
       @(drv_done);
     end
   endtask
@@ -49,13 +49,13 @@ endclass
 // ============================================================================
 // DRIVER CLASS
 // ============================================================================
-class FIFO_driver;
+class S_FIFO_driver;
   virtual FIFO_if vif;
   mailbox #(FIFO_transaction) gen2drv;
   event drv_done;
 
   function new(virtual FIFO_if vif,
-               mailbox #(FIFO_transaction) gen2drv,
+               mailbox #(S_FIFO_transaction) gen2drv,
                event drv_done);
     this.vif = vif;
     this.gen2drv = gen2drv;
@@ -64,8 +64,8 @@ class FIFO_driver;
 
   task run();
     forever begin
-      FIFO_transaction trans;
-      gen2drv.get(trans);
+      S_FIFO_transaction transaction;
+      gen2drv.get(transaction);
       @(posedge vif.Clock);
       vif.Write   <= trans.Write;
       vif.Read    <= trans.Read;
