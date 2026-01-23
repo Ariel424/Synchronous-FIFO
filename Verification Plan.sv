@@ -29,9 +29,10 @@ class FIFO_generator;
   event drv_done;
   int num_transactions = 100;
 
-  function new(mailbox #(FIFO_transaction) gen2drv, event drv_done);
+  function new(mailbox #(FIFO_transaction) gen2drv, event drv_done, int num_transactions = 100);
     this.gen2drv = gen2drv;
     this.drv_done = drv_done;
+    this.num_transactions = num_transactions;
   endfunction
 
   task run();
