@@ -37,7 +37,7 @@ class S_FIFO_generator;
 
   task run();
     repeat(num_transactions) begin
-      S_FIFO_transaction = new();
+      S_FIFO_transaction transaction = new();
       assert(trans.randomize());
       gen2drv.put(transaction);
       @(drv_done);
