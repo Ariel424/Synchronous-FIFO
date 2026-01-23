@@ -2,14 +2,12 @@
 // TRANSACTION CLASS
 // ============================================================================
 class FIFO_transaction;
-  // Input signals (randomized - these are driven to DUT)
-  rand bit Write;
-  rand bit Read;
+  // Input signals
+  rand bit Write, Read;
   rand bit [7:0] Data_in;
   
-  // Output signals (captured by monitor, NOT randomized)
-  bit Full;
-  bit Empty;
+  // Output signals 
+  bit Full, Empty;
   bit [7:0] Data_out;
   
   constraint write_read_dist {
