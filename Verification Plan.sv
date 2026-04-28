@@ -4,7 +4,6 @@
 class my_transaction; 
   rand bit write, read;
   rand bit [7:0] data_in;
-  bit full, empty;
   bit [7:0] data_out;
   
   constraint write_read_dist {
@@ -17,14 +16,12 @@ class my_transaction;
   tr.write = this.write;
   tr.read = this.read;
   tr.data_in = this.data_in;
-  tr.full = this.full;
-  tr.empty = this.empty;
   return tr; 
   endfunction 
   
   function void display(string tag = "");
     $display("[%0s] Time=%0t Write=%0b Read=%0b Din=%0h Full=%0b Empty=%0b Dout=%0h", 
-             tag, $time, Write, Read, Data_in, Full, Empty, Data_out);
+             tag, $time, Write, Read, Data_in, Full,Empty , Data_out);
   endfunction
 endclass
 
