@@ -62,11 +62,11 @@ endclass
 // DRIVER CLASS
 // ============================================================================
 class my_driver;
-  virtual my_interface vif;
+  virtual my_interface.DRIVER_MP vif;
   mailbox #(my_transaction) gen2drv;
   event drv_done;
 
-  function new(virtual FIFO_if vif, mailbox #(my_transaction) gen2drv, event drv_done);
+  function new(virtual my_interface.DRIVER_MP vif, mailbox #(my_transaction) gen2drv, event drv_done);
     this.vif = vif;
     this.gen2drv = gen2drv;
     this.drv_done = drv_done;
