@@ -31,12 +31,12 @@ endclass
 // ============================================================================
 // GENERATOR CLASS
 // ============================================================================
-class S_FIFO_generator;
-  mailbox #(S_FIFO_transaction) gen2drv;
+class my_generator;
+  mailbox #(my_transaction) gen2drv;
   event drv_done;
   int num_transactions = 100;
 
-  function new(mailbox #(S_FIFO_transaction) gen2drv, event drv_done, int num_transactions = 100);
+  function new( mailbox #(my_transaction) gen2drv, event drv_done, int num_transactions = 100);
     this.gen2drv = gen2drv;
     this.drv_done = drv_done;
     this.num_transactions = num_transactions;
@@ -44,9 +44,9 @@ class S_FIFO_generator;
 
   task run();
     repeat(num_transactions) begin
-      S_FIFO_transaction transaction = new();
-      assert(trans.randomize());
-      gen2drv.put(transaction);
+      my_transaction tr = new();
+      if (tr.randomize()) $fatal ("Randomized failed!"); 
+      gen2drv.put(tr);
       @(drv_done);
     end
   endtask
@@ -56,56 +56,67 @@ endclass
 // ============================================================================
 // DRIVER CLASS
 // ============================================================================
-class S_FIFO_driver;
-  virtual FIFO_if vif;
-  mailbox #(FIFO_transaction) gen2drv;
+class my_driver;
+  virtual my_interface vif;
+  mailbox #(my_transaction) gen2drv;
   event drv_done;
 
-  function new(virtual FIFO_if vif,
-               mailbox #(S_FIFO_transaction) gen2drv,
-               event drv_done);
+  function new(virtual FIFO_if vif, mailbox #(my_transaction) gen2drv, event drv_done);
     this.vif = vif;
     this.gen2drv = gen2drv;
     this.drv_done = drv_done;
   endfunction
 
   task run();
-    forever begin
-      S_FIFO_transaction transaction;
-      gen2drv.get(transaction);
-      @(posedge vif.Clock);
-      vif.Write   <= trans.Write;
-      vif.Read    <= trans.Read;
-      vif.Data_in <= trans.Data_in;
-      -> drv_done;
+
+    fork 
+  // producer 
+     forever begin
+      my_transaction tr; 
+      gen2drv.get(tr);
+      @(posedge vif.pro_cb);
+      vif.pro_cb.write <= tr.write;
+      vif.data_in <= tr.data_in;
+      vif.full <= tr.full;
     end
+      
+// consumer
+    forever begin
+    my_transaction tr; 
+    gen2drv.get(tr);
+      @(posedge vif.con_cb);
+      vif.con_cb.read <= tr.read;
+      vif.con_cb.data_out <= tr.data_out;
+      vif.con_cb.empty <= tr.empty;   
+    end
+     -> drv_done;    
+    join 
   endtask
 endclass
 
 // ============================================================================
 // MONITOR CLASS
 // ============================================================================
-class FIFO_monitor;
-  virtual FIFO_if vif;
-  mailbox #(FIFO_transaction) mon2scb;
+class my_monitor;
+  virtual my_interface vif;
+  mailbox #(my_transaction) mon2scb;
 
-  function new(virtual FIFO_if vif,
-               mailbox #(FIFO_transaction) mon2scb);
+  function new(virtual my_interface vif, mailbox #(my_transaction) mon2scb);
     this.vif = vif;
     this.mon2scb = mon2scb;
   endfunction
 
   task run();
     forever begin
-      FIFO_transaction trans = new();
-      @(posedge vif.Clock);
-      trans.Write    = vif.Write;
-      trans.Read     = vif.Read;
-      trans.Data_in  = vif.Data_in;
-      trans.Full     = vif.Full;
-      trans.Empty    = vif.Empty;
-      trans.Data_out = vif.Data_out;
-      mon2scb.put(trans);
+      my_transaction tr = new();
+      @(posedge vif.mon_cb);
+      tr.write    = vif.mon_cb.write;
+      tr.read    = vif.mon_cb.read;
+      tr.empty    = vif.mon_cb.empty;
+      tr.full    = vif.mon_cb.full;
+      tr.data_in    = vif.mon_cb.data_in;
+      tr.data_out    = vif.mon_cb.data_out;
+      mon2scb.put(tr);
     end
   endtask
 endclass
@@ -113,9 +124,9 @@ endclass
 // ============================================================================
 // SCOREBOARD CLASS
 // ============================================================================
-class FIFO_scoreboard;
-  mailbox #(FIFO_transaction) mon2scb;
-  bit [7:0] ref_q[$];
+class my_scoreboard;
+  mailbox #(my_transaction) mon2scb;
+  my_transaction exp_queue[$];
   int pass_count, fail_count;
 
   function new(mailbox #(FIFO_transaction) mon2scb);
@@ -124,33 +135,23 @@ class FIFO_scoreboard;
 
   task run();
     forever begin
-      FIFO_transaction trans;
-      mon2scb.get(trans);
+      my_transaction tr;
+      mon2scb.get(tr);
 
-      if (trans.Write && !trans.Full)
-        ref_q.push_back(trans.Data_in);
-
-      if (trans.Read && !trans.Empty) begin
-        bit [7:0] exp = ref_q.pop_front();
-        if (trans.Data_out === exp)
+      if (tr.write && !tr.full) begin
+        exp_queue.push_back(tr.data_in);
+      end
+      if (tr.read && !tr.empty) begin
+        my_transaction exp = exp_queue.pop_front();
+        if (tr.data_out === exp)
           pass_count++;
         else begin
-          $display("MISMATCH: Expected=%0h Got=%0h at time=%0t", exp, trans.Data_out, $time);
+          $display("MISMATCH: Expected=%0h Got=%0h at time=%0t", exp, tr.Data_out, $time);
           fail_count++;
         end
       end
     end
   endtask
-
-  function void report();
-    $display("========================================");
-    $display("SCOREBOARD REPORT");
-    $display("========================================");
-    $display("PASS = %0d", pass_count);
-    $display("FAIL = %0d", fail_count);
-    $display("========================================");
-  endfunction
-endclass
 
 // ============================================================================
 // Coverage CLASS
