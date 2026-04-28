@@ -1,19 +1,26 @@
 // ============================================================================
 // TRANSACTION CLASS
 // ============================================================================
-class S_FIFO_transaction;
-  // Input signals
-  rand bit Write, Read;
-  rand bit [7:0] Data_in;
-  
-  // Output signals 
-  bit Full, Empty;
-  bit [7:0] Data_out;
+class my_transaction; 
+  rand bit write, read;
+  rand bit [7:0] data_in;
+  bit full, empty;
+  bit [7:0] data_out;
   
   constraint write_read_dist {
-    Write dist {0:=30, 1:=70};
-    Read dist {0:=30, 1:=70};
+    write dist {0:=30, 1:=70};
+    read dist {0:=30, 1:=70};
   }
+
+  function my_transaction copy (); 
+  my_transaction tr = new();
+  tr.write = this.write;
+  tr.read = this.read;
+  tr.data_in = this.data_in;
+  tr.full = this.full;
+  tr.empty = this.empty;
+  return tr; 
+  endfunction 
   
   function void display(string tag = "");
     $display("[%0s] Time=%0t Write=%0b Read=%0b Din=%0h Full=%0b Empty=%0b Dout=%0h", 
