@@ -75,7 +75,7 @@ class my_driver;
   task run();
 
     fork 
-  // producer 
+ // producer path / read path
      forever begin
       my_transaction tr; 
       gen2drv.get(tr);
@@ -85,7 +85,7 @@ class my_driver;
       vif.full <= tr.full;
     end
       
-// consumer
+// consumer path / write path
     forever begin
     my_transaction tr; 
     gen2drv.get(tr);
