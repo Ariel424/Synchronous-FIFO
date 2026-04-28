@@ -6,7 +6,6 @@ class my_transaction;
   rand bit [7:0] data_in;
   rand bit write, read;
   bit [7:0] data_out;
-  bit full, empty; // נוספו המשתנים שהיו חסרים
   
   // הגדרת אילוצים
   constraint write_read_dist {
@@ -14,7 +13,6 @@ class my_transaction;
     read  dist {0:=30, 1:=70};
   }
 
-  // פונקציית העתקה מתוקנת - כוללת את כל השדות
   function my_transaction copy(); 
     my_transaction tr = new();
     tr.write    = this.write;
@@ -26,7 +24,6 @@ class my_transaction;
     return tr; 
   endfunction 
   
-  // פונקציית הדפסה מתוקנת - שמות משתנים תואמים ופורמט זמן נכון
   function void display(string tag = "");
     $display("[%0s] Time=%0t Write=%0b Read=%0b Din=0x%0h Full=%0b Empty=%0b Dout=0x%0h", 
              tag, $time, write, read, data_in, full, empty, data_out);
@@ -72,27 +69,28 @@ class my_driver;
     this.drv_done = drv_done;
   endfunction
 
-  task run();
-
-    fork 
- // producer path / read path
+  task run(); 
      forever begin
       my_transaction tr; 
       gen2drv.get(tr);
-      @(posedge vif.pro_cb);
-      vif.pro_cb.write <= tr.write;
+       
+      fork
+      @(vif.pro_cb);
+      if (vif.pro_cb.write && !vif.pro_cb.full)
+      vif.pro_cb.write <= 1'b1;
       vif.data_in <= tr.data_in;
-      vif.full <= tr.full;
+      end else begin
+      vif.pro_cb.write <= 1'b0;
     end
+  end 
       
-// consumer path / write path
-    forever begin
-    my_transaction tr; 
-    gen2drv.get(tr);
-      @(posedge vif.con_cb);
-      vif.con_cb.read <= tr.read;
-      vif.con_cb.data_out <= tr.data_out;
-      vif.con_cb.empty <= tr.empty;   
+else if begin
+  @(vif.con_cb);
+  if (vif.con_cb).read && !vif.con_cb).empty)
+  vif.con_cb.read <= 1'b1;
+  vif.con_cb.data_out <= tr.data_out;
+end else begin
+    vif.con_cb.read <= 1'b0;
     end
      -> drv_done;    
     join 
