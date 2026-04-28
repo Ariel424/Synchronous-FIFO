@@ -1,27 +1,38 @@
 // ============================================================================
 // TRANSACTION CLASS
 // ============================================================================
+// ============================================================================
+// TRANSACTION CLASS - FIXED
+// ============================================================================
 class my_transaction; 
-  rand bit write, read;
+  // הגדרת משתנים (רנדומליים ולא רנדומליים)
   rand bit [7:0] data_in;
+  rand bit write, read;
   bit [7:0] data_out;
+  bit full, empty; // נוספו המשתנים שהיו חסרים
   
+  // הגדרת אילוצים
   constraint write_read_dist {
     write dist {0:=30, 1:=70};
-    read dist {0:=30, 1:=70};
+    read  dist {0:=30, 1:=70};
   }
 
-  function my_transaction copy (); 
-  my_transaction tr = new();
-  tr.write = this.write;
-  tr.read = this.read;
-  tr.data_in = this.data_in;
-  return tr; 
+  // פונקציית העתקה מתוקנת - כוללת את כל השדות
+  function my_transaction copy(); 
+    my_transaction tr = new();
+    tr.write    = this.write;
+    tr.read     = this.read;
+    tr.data_in  = this.data_in;
+    tr.data_out = this.data_out;
+    tr.full     = this.full;
+    tr.empty    = this.empty;
+    return tr; 
   endfunction 
   
+  // פונקציית הדפסה מתוקנת - שמות משתנים תואמים ופורמט זמן נכון
   function void display(string tag = "");
-    $display("[%0s] Time=%0t Write=%0b Read=%0b Din=%0h Full=%0b Empty=%0b Dout=%0h", 
-             tag, $time, Write, Read, Data_in, Full,Empty , Data_out);
+    $display("[%0s] Time=%0t Write=%0b Read=%0b Din=0x%0h Full=%0b Empty=%0b Dout=0x%0h", 
+             tag, $time, write, read, data_in, full, empty, data_out);
   endfunction
 endclass
 
