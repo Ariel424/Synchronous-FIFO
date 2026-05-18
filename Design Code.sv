@@ -1,38 +1,38 @@
-module FIFO (
-    input Clock, Reset, Write, Read,
-    input [7:0] Din, 
-    output reg [7:0] Dout,
-    output Empty, Full
+module fifo (
+    input clock, reset, write, read,
+    input [7:0] din, 
+    output reg [7:0] dout,
+    output empty, full
 );
-    reg [4:0] Write_Pointer, Read_Pointer;
-    reg [7:0] Mem [15:0];
+    reg [4:0] write_pointer, read_pointer;
+    reg [7:0] mem [15:0];
 
-    assign Empty = (Write_Pointer == Read_Pointer);
-    assign Full  = (Write_Pointer[3:0] == Read_Pointer[3:0]) &&
-                   (Write_Pointer[4]   != Read_Pointer[4]);
+    assign empty = (write_pointer == read_pointer);
+    assign full  = (write_pointer[3:0] == read_pointer[3:0]) &&
+                   (write_pointer[4]   != read_pointer[4]);
 
-    always @(posedge Clock) begin
-        if (Reset) begin
-            Write_Pointer <= 0;
-            Read_Pointer  <= 0;
-            Dout          <= 0;
+    always @(posedge clock) begin
+        if (reset) begin
+            write_pointer <= 0;
+            read_pointer  <= 0;
+            dout          <= 0;
         end else begin
-            if (Write && !Full) begin
-                Mem[Write_Pointer[3:0]] <= Din;
-                Write_Pointer <= Write_Pointer + 1;
+            if (write && !full) begin
+                mem[write_pointer[3:0]] <= din;
+                write_pointer <= write_pointer + 1;
             end
 
-            if (Read && !Empty) begin
-                Dout <= Mem[Read_Pointer[3:0]];
-                Read_Pointer <= Read_Pointer + 1;
+            if (read && !empty) begin
+                dout <= mem[read_pointer[3:0]];
+                read_pointer <= read_pointer + 1;
             end
         end
     end
 endmodule
 
-interface FIFO_if;
+interface fifo_if;
 
-  logic Clock, Reset, Write, Read, Empty, Full;
-  logic [7:0] Data_in, Data_out;
+  logic clock, reset, write, read, empty, full;
+  logic [7:0] data_in, data_out;
     
 endinterface
