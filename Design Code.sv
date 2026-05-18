@@ -1,17 +1,18 @@
 module fifo (
-    input clock, reset, write, read,
-    input [7:0] din, 
-    output reg [7:0] dout,
-    output empty, full
+    input  logic       clock, reset, write, read,
+    input  logic [7:0] din, 
+    output logic [7:0] dout, // עודכן מ-reg ל-logic
+    output logic       empty, full
 );
-    reg [4:0] write_pointer, read_pointer;
-    reg [7:0] mem [15:0];
+    logic [4:0] write_pointer, read_pointer;
+    logic [7:0] mem [15:0];
 
     assign empty = (write_pointer == read_pointer);
     assign full  = (write_pointer[3:0] == read_pointer[3:0]) &&
                    (write_pointer[4]   != read_pointer[4]);
 
-    always @(posedge clock) begin
+    // עודכן ל-always_ff המומלץ ב-SystemVerilog לתת-מערכות סינכרוניות
+    always_ff @(posedge clock) begin
         if (reset) begin
             write_pointer <= 0;
             read_pointer  <= 0;
