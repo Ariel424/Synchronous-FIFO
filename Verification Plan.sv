@@ -2,11 +2,11 @@
 // TRANSACTION CLASS
 // ============================================================================
 class my_transaction; 
-  // הגדרת משתנים (רנדומליים ולא רנדומליים)
   rand bit [7:0] data_in;
   rand bit write, read;
-  
-  // הגדרת אילוצים
+  bit [7:0] data_out;
+  bit full, empty;
+
   constraint write_read_dist {
     write dist {0:=30, 1:=70};
     read  dist {0:=30, 1:=70};
@@ -35,9 +35,9 @@ endclass
 class my_generator;
   mailbox #(my_transaction) gen2drv;
   event drv_done;
-  int num_transactions = 100;
+  int num_transactions;
 
-  function new( mailbox #(my_transaction) gen2drv, event drv_done, int num_transactions = 100);
+  function new(mailbox #(my_transaction) gen2drv, event drv_done, int num_transactions = 100);
     this.gen2drv = gen2drv;
     this.drv_done = drv_done;
     this.num_transactions = num_transactions;
@@ -46,13 +46,13 @@ class my_generator;
   task run();
     repeat(num_transactions) begin
       my_transaction tr = new();
-      if (tr.randomize()) $fatal ("Randomized failed!"); 
-      gen2drv.put(tr);
+      if (!tr.randomize()) $fatal("Randomization failed!"); 
+      gen2drv.put(tr.copy());
       @(drv_done);
     end
+    $display("[%0t] Generator: Finished generating %0d transactions", $time, num_transactions);
   endtask
 endclass
-
 
 // ============================================================================
 // DRIVER CLASS
@@ -69,30 +69,39 @@ class my_driver;
   endfunction
 
   task run(); 
-     forever begin
+    forever begin
       my_transaction tr; 
       gen2drv.get(tr);
        
       fork
-      @(vif.pro_cb);
-      if (vif.pro_cb.write && !vif.pro_cb.full)
-      vif.pro_cb.write <= 1'b1;
-      vif.data_in <= tr.data_in;
-      end else begin
-      vif.pro_cb.write <= 1'b0;
-    end
-  end 
+        begin
+          @(vif.pro_cb);
+          if (tr.write && !vif.pro_cb.full) begin
+            vif.pro_cb.write   <= 1'b1;
+            vif.pro_cb.data_in <= tr.data_in;
+          end else begin
+            vif.pro_cb.write   <= 1'b0;
+          end
+        end
+        
+        // ערוץ צרכן (Read Path)
+        begin
+          @(vif.con_cb);
+          if (tr.read && !vif.con_cb.empty) begin
+            vif.con_cb.read <= 1'b1;
+          end else begin
+            vif.con_cb.read <= 1'b0;
+          end
+        end
+      join
       
-else if begin
-  @(vif.con_cb);
-  if (vif.con_cb).read && !vif.con_cb).empty)
-  vif.con_cb.read <= 1'b1;
-  vif.con_cb.data_out <= tr.data_out;
-end else begin
-    vif.con_cb.read <= 1'b0;
+      // מחכים פעימה נוספת כדי לתת לסיגנלים להתעדכן בחומרה לפני שמשחררים את הגנרטור
+      @(vif.pro_cb);
+      vif.pro_cb.write <= 1'b0;
+      vif.con_cb.read  <= 1'b0;
+      
+      -> drv_done; 
     end
-     -> drv_done;    
-    join 
   endtask
 endclass
 
@@ -100,10 +109,10 @@ endclass
 // MONITOR CLASS
 // ============================================================================
 class my_monitor;
-  virtual my_interface vif;
+  virtual my_interface.MONITOR_MP vif;
   mailbox #(my_transaction) mon2scb;
 
-  function new(virtual my_interface vif, mailbox #(my_transaction) mon2scb);
+  function new(virtual my_interface.MONITOR_MP vif, mailbox #(my_transaction) mon2scb);
     this.vif = vif;
     this.mon2scb = mon2scb;
   endfunction
@@ -111,13 +120,13 @@ class my_monitor;
   task run();
     forever begin
       my_transaction tr = new();
-      @(posedge vif.mon_cb);
+      @(vif.mon_cb); // מסונכרן ל-mon_cb המוגדר באינטרפייס
       tr.write    = vif.mon_cb.write;
-      tr.read    = vif.mon_cb.read;
+      tr.read     = vif.mon_cb.read;
       tr.empty    = vif.mon_cb.empty;
-      tr.full    = vif.mon_cb.full;
-      tr.data_in    = vif.mon_cb.data_in;
-      tr.data_out    = vif.mon_cb.data_out;
+      tr.full     = vif.mon_cb.full;
+      tr.data_in  = vif.mon_cb.data_in;
+      tr.data_out = vif.mon_cb.data_out;
       mon2scb.put(tr);
     end
   endtask
@@ -128,10 +137,10 @@ endclass
 // ============================================================================
 class my_scoreboard;
   mailbox #(my_transaction) mon2scb;
-  my_transaction exp_queue[$];
+  bit [7:0] exp_queue[$]; // תור לבדיקת הנתונים שעברו (FIFO Golden Model)
   int pass_count, fail_count;
 
-  function new(mailbox #(FIFO_transaction) mon2scb);
+  function new(mailbox #(my_transaction) mon2scb);
     this.mon2scb = mon2scb;
   endfunction
 
@@ -140,51 +149,65 @@ class my_scoreboard;
       my_transaction tr;
       mon2scb.get(tr);
 
+      // אם התבצעה כתיבה תקינה לחומרה - נשמור את המידע שציפינו לו
       if (tr.write && !tr.full) begin
         exp_queue.push_back(tr.data_in);
       end
+      
+      // אם התבצעה קריאה תקינה מהחומרה - נשווה לראש התור
       if (tr.read && !tr.empty) begin
-        my_transaction exp = exp_queue.pop_front();
-        if (tr.data_out === exp)
-          pass_count++;
-        else begin
-          $display("MISMATCH: Expected=%0h Got=%0h at time=%0t", exp, tr.Data_out, $time);
-          fail_count++;
+        if (exp_queue.size() > 0) begin
+          bit [7:0] exp = exp_queue.pop_front();
+          if (tr.data_out === exp) begin
+            pass_count++;
+          end else begin
+            $display("[%0t] MISMATCH: Expected=0x%0h Got=0x%0h", $time, exp, tr.data_out);
+            fail_count++;
+          end
         end
       end
     end
   endtask
 
-// ============================================================================
-// Coverage CLASS
-// ============================================================================
+  function void report();
+    $display("\n========================================");
+    $display("          SCOREBOARD REPORT             ");
+    $display("========================================");
+    $display("  Passed Transactions: %0d", pass_count);
+    $display("  Failed Transactions: %0d", fail_count);
+    $display("========================================\n");
+  endfunction
+endclass
 
+// ============================================================================
+// COVERAGE CLASS
+// ============================================================================
 class FIFO_coverage;
-  virtual FIFO_if vif;
-  mailbox #(FIFO_transaction) mon2cov;
+  virtual my_interface vif;
+  mailbox #(my_transaction) mon2cov;
+  my_transaction trans;
   
-  // Interface-level coverage
-  covergroup interface_cg @(posedge vif.Clock);
-    cp_write: coverpoint vif.Write;
-    cp_read:  coverpoint vif.Read;
-    cp_full:  coverpoint vif.Full;
-    cp_empty: coverpoint vif.Empty;
+  // כיסוי ברמת האינטרפייס (אותיות קטנות בהתאמה לאינטרפייס)
+  covergroup interface_cg @(posedge vif.clk);
+    cp_write: coverpoint vif.write;
+    cp_read:  coverpoint vif.read;
+    cp_full:  coverpoint vif.full;
+    cp_empty: coverpoint vif.empty;
     
-    // Cross coverage for corner cases
-    cross_wr: cross cp_write, cp_read;
+    cross_wr:     cross cp_write, cp_read;
     cross_status: cross cp_full, cp_empty;
-    cross_ops: cross cp_write, cp_read, cp_full, cp_empty;
+    cross_ops:    cross cp_write, cp_read, cp_full, cp_empty;
   endgroup
   
-  // Transaction-level coverage
+  // כיסוי ברמת הטרנזקציה
   covergroup transaction_cg;
-    cp_data: coverpoint trans.Data_in {
-      bins low    = {[0:63]};
-      bins mid    = {[64:191]};
-      bins high   = {[192:255]};
+    cp_data: coverpoint trans.data_in {
+      bins low  = {[0:63]};
+      bins mid  = {[64:191]};
+      bins high = {[192:255]};
     }
     
-    cp_operation: coverpoint {trans.Write, trans.Read} {
+    cp_operation: coverpoint {trans.write, trans.read} {
       bins idle       = {2'b00};
       bins write_only = {2'b10};
       bins read_only  = {2'b01};
@@ -192,9 +215,7 @@ class FIFO_coverage;
     }
   endgroup
   
-  FIFO_transaction trans;
-  
-  function new(virtual FIFO_if vif, mailbox #(FIFO_transaction) mon2cov);
+  function new(virtual my_interface vif, mailbox #(my_transaction) mon2cov);
     this.vif = vif;
     this.mon2cov = mon2cov;
     interface_cg = new();
@@ -203,40 +224,50 @@ class FIFO_coverage;
   
   task run();
     fork
-      // Interface sampling (automatic with event)
-      forever @(posedge vif.Clock) interface_cg.sample();
+      // דגימת סיגנלים אוטומטית לפי השעון
+      forever @(posedge vif.clk) interface_cg.sample();
       
-      // Transaction sampling
+      // דגימת טרנזקציות שמגיעות מהמוניטור
       forever begin
         mon2cov.get(trans);
         transaction_cg.sample();
       end
     join
   endtask
+
+  function void report();
+    $display("Interface Coverage: %.2f%%", interface_cg.get_coverage());
+    $display("Transaction Coverage: %.2f%%", transaction_cg.get_coverage());
+  endfunction
 endclass
 
 // ============================================================================
 // ENVIRONMENT CLASS
 // ============================================================================
 class FIFO_environment;
-  FIFO_generator gen;
-  FIFO_driver drv;
-  FIFO_monitor mon;
-  FIFO_scoreboard scb;
+  my_generator  gen;
+  my_driver     drv;
+  my_monitor    mon;
+  my_scoreboard scb;
   FIFO_coverage cov;
 
-  mailbox #(FIFO_transaction) gen2drv = new();
-  mailbox #(FIFO_transaction) mon2scb = new();
+  mailbox #(my_transaction) gen2drv;
+  mailbox #(my_transaction) mon2scb;
   event drv_done;
-  virtual FIFO_if vif;
+  virtual my_interface vif;
+  int num_transactions;
 
-  function new(virtual FIFO_if vif);
+  function new(virtual my_interface vif, int num_transactions = 100);
     this.vif = vif;
-    gen = new(gen2drv, drv_done);
-    drv = new(vif, gen2drv, drv_done);
-    mon = new(vif, mon2scb);
+    this.num_transactions = num_transactions;
+    gen2drv = new();
+    mon2scb = new();
+    
+    gen = new(gen2drv, drv_done, num_transactions);
+    drv = new(vif.DRIVER_MP, gen2drv, drv_done);
+    mon = new(vif.MONITOR_MP, mon2scb);
     scb = new(mon2scb);
-    cov = new(vif);
+    cov = new(vif, mon2scb); // המוניטור מזין גם את הקוברג'
   endfunction
 
   task run();
@@ -250,7 +281,9 @@ class FIFO_environment;
   endtask
 
   task post_run();
-    #500;
+    // מחכים שהדרייבר יסיים לעבד את כל הטרנזקציות מול הסקורבורד
+    wait(gen.num_transactions == scb.pass_count + scb.fail_count);
+    #100;
     scb.report();
     cov.report();
   endtask
@@ -261,20 +294,24 @@ endclass
 // ============================================================================
 class FIFO_test;
   FIFO_environment env;
-  virtual FIFO_if vif;
+  virtual my_interface vif;
+  int num_transactions;
 
-  function new(virtual FIFO_if vif);
+  function new(virtual my_interface vif, int num_transactions = 100);
     this.vif = vif;
-    env = new(vif);
+    this.num_transactions = num_transactions;
+    env = new(vif, num_transactions);
   endfunction
 
   task reset_dut();
-    vif.Reset = 1;
-    vif.Write = 0;
-    vif.Read  = 0;
-    vif.Data_in = 0;
-    repeat(2) @(posedge vif.Clock);
-    vif.Reset = 0;
+    $display("[%0t] Test: Initiating Reset...", $time);
+    vif.reset   = 1;
+    vif.write   = 0;
+    vif.read    = 0;
+    vif.data_in = 0;
+    repeat(4) @(posedge vif.clk);
+    vif.reset   = 0;
+    $display("[%0t] Test: Reset Released", $time);
   endtask
 
   task run();
@@ -289,27 +326,31 @@ endclass
 // ============================================================================
 module tb_FIFO;
 
-  bit Clock;
-  initial forever #5 Clock = ~Clock;
+  bit clk;
+  always #5 clk = ~clk; // יצירת השעון הסינכרוני
 
-  FIFO_if fif();
-  assign fif.Clock = Clock;
+  // יצירת אינסטנס לאינטרפייס
+  my_interface #(8) fif(clk);
 
+  // חיבור החומרה (DUT) לסיגנלים של האינטרפייס (אותיות קטנות)
   FIFO dut (
-    .Clock (fif.Clock),
-    .Reset (fif.Reset),
-    .Write (fif.Write),
-    .Read  (fif.Read),
-    .Din   (fif.Data_in),
-    .Dout  (fif.Data_out),
-    .Empty (fif.Empty),
-    .Full  (fif.Full)
+    .Clock (fif.clk),
+    .Reset (fif.reset),
+    .Write (fif.write),
+    .Read  (fif.read),
+    .Din   (fif.data_in),
+    .Dout  (fif.data_out),
+    .Empty (fif.empty),
+    .Full  (fif.full)
   );
 
   initial begin
-    FIFO_test test = new(fif);
+    FIFO_test test;
+    // הרצת טסט עם 200 טרנזקציות
+    test = new(fif, 200);
     test.run();
-    #100 $finish;
+    #50;
+    $finish;
   end
 
 endmodule
