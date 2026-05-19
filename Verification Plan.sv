@@ -5,7 +5,6 @@ class my_transaction;
   // הגדרת משתנים (רנדומליים ולא רנדומליים)
   rand bit [7:0] data_in;
   rand bit write, read;
-  bit [7:0] data_out;
   
   // הגדרת אילוצים
   constraint write_read_dist {
