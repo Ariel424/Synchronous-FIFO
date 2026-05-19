@@ -4,6 +4,7 @@
 class my_transaction; 
   rand bit [7:0] data_in;
   rand bit write, read;
+  
   bit [7:0] data_out;
   bit full, empty;
 
@@ -74,6 +75,7 @@ class my_driver;
       gen2drv.get(tr);
        
       fork
+        // ערוץ יצרן (Write Path)
         begin
           @(vif.pro_cb);
           if (tr.write && !vif.pro_cb.full) begin
